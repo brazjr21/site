@@ -37,7 +37,7 @@ exports.handler = async (event) => {
         }
 
         const rawStatus = String(data.status || '').toUpperCase();
-        const normalized = rawStatus === 'COMPLETED' ? 'paid' : 'pending';
+        const normalized = (rawStatus === 'COMPLETED' || rawStatus === 'PAID' || rawStatus === 'APPROVED') ? 'paid' : 'pending';
 
         return {
             statusCode: 200,

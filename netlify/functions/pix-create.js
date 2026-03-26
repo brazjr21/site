@@ -70,7 +70,11 @@ exports.handler = async (event) => {
             };
         }
 
-        if (!data.transactionId || !data.pixCode) {
+        const txId = data.transactionId || data.transaction_id || data.id || data.txid || '';
+        const pixCode = data.pixCode || data.pix_code || data.qrCode || data.qr_code || data.emv || data.code || '';
+
+        if (!txId || !pixCode) {
+            console.error('Gateway response missing fields:', JSON.stringify(data));
             return {
                 statusCode: 500, headers: CORS,
                 body: JSON.stringify({ error: 'Resposta inválida do gateway de pagamento.' })
@@ -81,8 +85,9 @@ exports.handler = async (event) => {
             statusCode: 200,
             headers: { ...CORS, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                idTransaction: data.transactionId,
-                paymentCode: data.pixCode,
+                idTransaction: txId,
+                paymentCode: pixCode,
+                paymentQrUrl: data.paymentQrUrl || data.qrCodeImage || data.qr_code_image || '',
                 status: 'pending',
                 gateway: 'pagamentos-seguros'
             })
