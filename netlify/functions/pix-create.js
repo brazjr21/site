@@ -1,3 +1,5 @@
+const https = require('https');
+
 const PIX_URL = 'https://www.pagamentos-seguros.app/api-pix/btKq_tIxKS1U9Wel9bivk2-S0FYHUppCMtlJH_Ji91obwbbjhDLtOxqXCeLOmeArzwDmrPOu8ge6nJtzEMoPUg';
 
 const CORS = {
@@ -5,6 +7,35 @@ const CORS = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
 };
+
+function httpsPost(url, body) {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(url);
+        const bodyStr = JSON.stringify(body);
+        const options = {
+            hostname: urlObj.hostname,
+            port: 443,
+            path: urlObj.pathname + urlObj.search,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(bodyStr)
+            }
+        };
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                let parsed = {};
+                try { parsed = JSON.parse(data); } catch (_) {}
+                resolve({ statusCode: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, data: parsed });
+            });
+        });
+        req.on('error', reject);
+        req.write(bodyStr);
+        req.end();
+    });
+}
 
 exports.handler = async (event) => {
     if (event.httpMethod === 'OPTIONS') {
@@ -16,7 +47,7 @@ exports.handler = async (event) => {
 
     try {
         const body = JSON.parse(event.body || '{}');
-        const { amount, personal, bump, shipping, utm, upsell } = body;
+        const { amount, personal, bump, utm, upsell } = body;
 
         const amountBRL = Number(amount) || 0;
         if (amountBRL < 1) {
@@ -55,15 +86,10 @@ exports.handler = async (event) => {
             utm: utmString
         };
 
-        const extRes = await fetch(PIX_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        const result = await httpsPost(PIX_URL, payload);
+        const data = result.data;
 
-        const data = await extRes.json().catch(() => ({}));
-
-        if (!extRes.ok) {
+        if (!result.ok) {
             return {
                 statusCode: 400, headers: CORS,
                 body: JSON.stringify({ error: String(data?.error || 'Falha ao gerar PIX. Tente novamente.') })

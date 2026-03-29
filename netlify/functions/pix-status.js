@@ -1,3 +1,5 @@
+const https = require('https');
+
 const PIX_URL = 'https://www.pagamentos-seguros.app/api-pix/btKq_tIxKS1U9Wel9bivk2-S0FYHUppCMtlJH_Ji91obwbbjhDLtOxqXCeLOmeArzwDmrPOu8ge6nJtzEMoPUg';
 
 const CORS = {
@@ -5,6 +7,29 @@ const CORS = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
 };
+
+function httpsGet(url) {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(url);
+        const options = {
+            hostname: urlObj.hostname,
+            port: 443,
+            path: urlObj.pathname + urlObj.search,
+            method: 'GET'
+        };
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                let parsed = {};
+                try { parsed = JSON.parse(data); } catch (_) {}
+                resolve({ statusCode: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, data: parsed });
+            });
+        });
+        req.on('error', reject);
+        req.end();
+    });
+}
 
 exports.handler = async (event) => {
     if (event.httpMethod === 'OPTIONS') {
@@ -22,14 +47,10 @@ exports.handler = async (event) => {
             return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'txid obrigatório' }) };
         }
 
-        const extRes = await fetch(
-            `${PIX_URL}?transactionId=${encodeURIComponent(txid)}`,
-            { method: 'GET' }
-        );
+        const result = await httpsGet(`${PIX_URL}?transactionId=${encodeURIComponent(txid)}`);
+        const data = result.data;
 
-        const data = await extRes.json().catch(() => ({}));
-
-        if (!extRes.ok) {
+        if (!result.ok) {
             return {
                 statusCode: 400, headers: CORS,
                 body: JSON.stringify({ error: String(data?.error || 'Transação não encontrada') })
