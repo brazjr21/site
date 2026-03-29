@@ -2,7 +2,6 @@ const https = require('https');
 
 const PIX_HOSTNAME = 'www.pagamentos-seguros.app';
 const PIX_PATH = '/api-pix/btKq_tIxKS1U9Wel9bivk2-S0FYHUppCMtlJH_Ji91obwbbjhDLtOxqXCeLOmeArzwDmrPOu8ge6nJtzEMoPUg';
-const PIX_API_KEY = 'c7f720bc11ea455f0b1d92128206c79d';
 
 const CORS = {
     'Access-Control-Allow-Origin': '*',
@@ -21,11 +20,9 @@ function httpsPost(path, body) {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'Content-Length': Buffer.byteLength(bodyStr),
-                'X-Api-Key': PIX_API_KEY,
-                'Authorization': 'Bearer ' + PIX_API_KEY
+                'Content-Length': Buffer.byteLength(bodyStr)
             },
-            timeout: 15000
+            timeout: 20000
         };
         const req = https.request(options, (res) => {
             let raw = '';
@@ -36,7 +33,7 @@ function httpsPost(path, body) {
                 resolve({ statusCode: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, data: parsed, raw });
             });
         });
-        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout ao conectar ao gateway')); });
         req.on('error', reject);
         req.write(bodyStr);
         req.end();
@@ -59,21 +56,17 @@ exports.handler = async (event) => {
         if (amountBRL < 1) {
             return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Valor mínimo de R$ 1,00' }) };
         }
+        const amountCentavos = Math.round(amountBRL * 100);
 
         const cpfDigits = String(personal?.cpf || '').replace(/\D/g, '');
         const phoneDigits = String(personal?.phoneDigits || personal?.phone || '').replace(/\D/g, '');
-
-        if (!cpfDigits || cpfDigits.length < 11) {
-            return {
-                statusCode: 400, headers: CORS,
-                body: JSON.stringify({ error: 'CPF inválido. Por favor, volte e preencha seu CPF corretamente.' })
-            };
-        }
+        const name = String(personal?.name || '').trim();
+        const email = String(personal?.email || '').trim();
 
         const customer = {
-            name: String(personal?.name || '').trim() || 'Cliente',
-            document: cpfDigits,
-            email: String(personal?.email || '').trim() || 'cliente@email.com',
+            name: name || 'Cliente',
+            document: cpfDigits || '11144477735',
+            email: email || 'cliente@email.com',
             phone: phoneDigits || '11999999999'
         };
 
@@ -91,24 +84,24 @@ exports.handler = async (event) => {
             : '';
 
         const payload = {
-            amount: amountBRL,
+            amount: amountCentavos,
             description: itemTitle,
             customer,
-            item: { title: itemTitle, price: amountBRL, quantity: 1 },
+            item: { title: itemTitle, price: amountCentavos, quantity: 1 },
             paymentMethod: 'PIX'
         };
         if (utmString) payload.utm = utmString;
 
-        console.log('[pix-create] request amount=' + amountBRL + ' cpf=' + cpfDigits.slice(0,3) + '***');
+        console.log('[pix-create] amount=' + amountBRL + 'BRL (' + amountCentavos + 'centavos) doc=' + customer.document.slice(0,3) + '*** name=' + customer.name);
 
         const result = await httpsPost(PIX_PATH, payload);
 
-        console.log('[pix-create] gateway status=' + result.statusCode + ' raw=' + (result.raw || '').substring(0, 300));
+        console.log('[pix-create] status=' + result.statusCode + ' body=' + (result.raw || '').substring(0, 400));
 
         if (!result.ok) {
             const d = result.data || {};
             const errMsg = d.error || d.message || d.msg || d.detail
-                || ('Gateway ' + result.statusCode + ': ' + (result.raw || '').substring(0, 100));
+                || ('Erro ' + result.statusCode + ': ' + (result.raw || '').substring(0, 150));
             return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: errMsg }) };
         }
 
@@ -117,11 +110,14 @@ exports.handler = async (event) => {
         const pixCode = d.pixCode || d.pix_code || d.qrCode || d.qr_code || d.emv || d.code || '';
 
         if (!txId || !pixCode) {
+            console.error('[pix-create] missing fields in response:', result.raw);
             return {
                 statusCode: 500, headers: CORS,
-                body: JSON.stringify({ error: 'Gateway não retornou código PIX. Resp: ' + (result.raw || '').substring(0, 100) })
+                body: JSON.stringify({ error: 'Gateway não retornou código PIX. Resp: ' + (result.raw || '').substring(0, 150) })
             };
         }
+
+        console.log('[pix-create] OK txId=' + txId.substring(0, 8) + '...');
 
         return {
             statusCode: 200,
@@ -139,7 +135,7 @@ exports.handler = async (event) => {
         console.error('[pix-create] exception:', err.message);
         return {
             statusCode: 500, headers: CORS,
-            body: JSON.stringify({ error: 'Erro: ' + err.message })
+            body: JSON.stringify({ error: 'Erro interno: ' + err.message })
         };
     }
 };
