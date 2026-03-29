@@ -8,31 +8,40 @@ const CORS = {
     'Access-Control-Allow-Headers': 'Content-Type'
 };
 
-function httpsPost(url, body) {
+function httpsRequest(url, method, body) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
-        const bodyStr = JSON.stringify(body);
+        const bodyStr = body ? JSON.stringify(body) : null;
         const options = {
             hostname: urlObj.hostname,
             port: 443,
             path: urlObj.pathname + urlObj.search,
-            method: 'POST',
+            method: method || 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'Content-Length': Buffer.byteLength(bodyStr)
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (compatible; ifoodbag/1.0)'
             }
         };
+        if (bodyStr) {
+            options.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+        }
         const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
+            let raw = '';
+            res.on('data', (chunk) => { raw += chunk; });
             res.on('end', () => {
-                let parsed = {};
-                try { parsed = JSON.parse(data); } catch (_) {}
-                resolve({ statusCode: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, data: parsed });
+                let parsed = null;
+                try { parsed = JSON.parse(raw); } catch (_) { parsed = null; }
+                resolve({
+                    statusCode: res.statusCode,
+                    ok: res.statusCode >= 200 && res.statusCode < 300,
+                    data: parsed,
+                    raw: raw
+                });
             });
         });
         req.on('error', reject);
-        req.write(bodyStr);
+        if (bodyStr) req.write(bodyStr);
         req.end();
     });
 }
@@ -86,21 +95,29 @@ exports.handler = async (event) => {
             utm: utmString
         };
 
-        const result = await httpsPost(PIX_URL, payload);
-        const data = result.data;
+        console.log('PIX create request:', JSON.stringify({ amount: amountBRL, customer }));
+
+        const result = await httpsRequest(PIX_URL, 'POST', payload);
+
+        console.log('PIX gateway response:', result.statusCode, result.raw ? result.raw.substring(0, 500) : '');
 
         if (!result.ok) {
+            const data = result.data || {};
+            const errMsg = data.error || data.message || data.msg || data.detail || data.erro
+                || `Gateway retornou ${result.statusCode}`;
+            console.error('PIX gateway error:', result.statusCode, errMsg);
             return {
                 statusCode: 400, headers: CORS,
-                body: JSON.stringify({ error: String(data?.error || 'Falha ao gerar PIX. Tente novamente.') })
+                body: JSON.stringify({ error: errMsg })
             };
         }
 
+        const data = result.data || {};
         const txId = data.transactionId || data.transaction_id || data.id || data.txid || '';
         const pixCode = data.pixCode || data.pix_code || data.qrCode || data.qr_code || data.emv || data.code || '';
 
         if (!txId || !pixCode) {
-            console.error('Gateway response missing fields:', JSON.stringify(data));
+            console.error('PIX gateway missing fields. Response:', result.raw ? result.raw.substring(0, 500) : '');
             return {
                 statusCode: 500, headers: CORS,
                 body: JSON.stringify({ error: 'Resposta inválida do gateway de pagamento.' })
@@ -120,10 +137,10 @@ exports.handler = async (event) => {
         };
 
     } catch (err) {
-        console.error('PIX create error:', err);
+        console.error('PIX create exception:', err.message, err.stack);
         return {
             statusCode: 500, headers: CORS,
-            body: JSON.stringify({ error: 'Erro interno ao gerar PIX. Tente novamente.' })
+            body: JSON.stringify({ error: 'Erro interno ao gerar PIX: ' + err.message })
         };
     }
 };

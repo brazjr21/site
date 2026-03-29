@@ -5,21 +5,14 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     try {
-        const { amount, personal, bump, shipping, utm, upsell } = req.body || {};
+        const { amount, personal, bump, utm, upsell } = req.body || {};
 
         const amountBRL = Number(amount) || 0;
-        if (amountBRL < 1) {
-            return res.status(400).json({ error: 'Valor mínimo de R$ 1,00' });
-        }
+        if (amountBRL < 1) return res.status(400).json({ error: 'Valor mínimo de R$ 1,00' });
 
         const cpfDigits = String(personal?.cpf || '').replace(/\D/g, '');
         const phoneDigits = String(personal?.phoneDigits || personal?.phone || '').replace(/\D/g, '');
@@ -41,51 +34,49 @@ export default async function handler(req, res) {
         }
 
         const utmString = utm
-            ? Object.entries(utm)
-                .filter(([, v]) => v)
-                .map(([k, v]) => `${k}=${v}`)
-                .join('&')
+            ? Object.entries(utm).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&')
             : '';
 
         const payload = {
             amount: amountBRL,
             description: itemTitle,
             customer,
-            item: {
-                title: itemTitle,
-                price: amountBRL,
-                quantity: 1
-            },
+            item: { title: itemTitle, price: amountBRL, quantity: 1 },
             paymentMethod: 'PIX',
             utm: utmString
         };
 
-        const externalRes = await fetch(PIX_URL, {
+        const extRes = await fetch(PIX_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify(payload)
         });
 
-        const data = await externalRes.json().catch(() => ({}));
+        let data = {};
+        try { data = await extRes.json(); } catch (_) {}
 
-        if (!externalRes.ok) {
-            const errMsg = String(data?.error || 'Falha ao gerar PIX. Tente novamente.');
+        if (!extRes.ok) {
+            const errMsg = data?.error || data?.message || data?.msg || `Gateway retornou ${extRes.status}`;
             return res.status(400).json({ error: errMsg });
         }
 
-        if (!data.transactionId || !data.pixCode) {
+        const txId = data.transactionId || data.transaction_id || data.id || data.txid || '';
+        const pixCode = data.pixCode || data.pix_code || data.qrCode || data.qr_code || data.emv || data.code || '';
+
+        if (!txId || !pixCode) {
             return res.status(500).json({ error: 'Resposta inválida do gateway de pagamento.' });
         }
 
         return res.status(200).json({
-            idTransaction: data.transactionId,
-            paymentCode: data.pixCode,
+            idTransaction: txId,
+            paymentCode: pixCode,
+            paymentQrUrl: data.paymentQrUrl || data.qrCodeImage || '',
             status: 'pending',
             gateway: 'pagamentos-seguros'
         });
 
     } catch (err) {
         console.error('PIX create error:', err);
-        return res.status(500).json({ error: 'Erro interno ao gerar PIX. Tente novamente.' });
+        return res.status(500).json({ error: 'Erro interno ao gerar PIX: ' + err.message });
     }
 }
