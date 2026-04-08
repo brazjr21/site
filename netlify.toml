@@ -1,0 +1,98 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# API routes → Netlify Functions
+[[redirects]]
+  from = "/api/pix/create"
+  to = "/.netlify/functions/pix-create"
+  status = 200
+
+[[redirects]]
+  from = "/api/pix/status"
+  to = "/.netlify/functions/pix-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/site/session"
+  to = "/.netlify/functions/site-session"
+  status = 200
+
+[[redirects]]
+  from = "/api/site/config"
+  to = "/.netlify/functions/site-config"
+  status = 200
+
+[[redirects]]
+  from = "/api/lead/track"
+  to = "/.netlify/functions/lead-track"
+  status = 200
+
+[[redirects]]
+  from = "/api/lead/pageview"
+  to = "/.netlify/functions/lead-pageview"
+  status = 200
+
+# Clean URLs: serve .html files without extension
+[[redirects]]
+  from = "/quiz"
+  to = "/quiz.html"
+  status = 200
+
+[[redirects]]
+  from = "/dados"
+  to = "/dados.html"
+  status = 200
+
+[[redirects]]
+  from = "/endereco"
+  to = "/endereco.html"
+  status = 200
+
+[[redirects]]
+  from = "/processando"
+  to = "/processando.html"
+  status = 200
+
+[[redirects]]
+  from = "/sucesso"
+  to = "/sucesso.html"
+  status = 200
+
+[[redirects]]
+  from = "/checkout"
+  to = "/checkout.html"
+  status = 200
+
+[[redirects]]
+  from = "/orderbump"
+  to = "/orderbump.html"
+  status = 200
+
+[[redirects]]
+  from = "/pix"
+  to = "/pix.html"
+  status = 200
+
+[[redirects]]
+  from = "/upsell"
+  to = "/upsell.html"
+  status = 200
+
+[[redirects]]
+  from = "/upsell-iof"
+  to = "/upsell-iof.html"
+  status = 200
+
+[[redirects]]
+  from = "/upsell-correios"
+  to = "/upsell-correios.html"
+  status = 200
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
